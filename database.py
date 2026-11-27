@@ -1,11 +1,11 @@
 import asyncpg
 from config import DATABASE_URL
+import os
 
 pool: asyncpg.Pool | None = None
 
 
 def normalize_database_url(url: str) -> str:
-    # Render/Postgres URL ba'zan postgres:// ko'rinishida beriladi.
     if url.startswith("postgres://"):
         return "postgresql://" + url[len("postgres://"):]
     return url
@@ -13,12 +13,14 @@ def normalize_database_url(url: str) -> str:
 
 async def init_db() -> None:
     global pool
+    ssl_mode = os.getenv("DATABASE_SSL", "require").strip().lower()
+    ssl_value = None if ssl_mode in {"disable", "false", "0", "off"} else ssl_mode
     pool = await asyncpg.create_pool(
         normalize_database_url(DATABASE_URL),
         min_size=1,
         max_size=5,
         command_timeout=30,
-        ssl="require" if "render.com" in DATABASE_URL else None,
+        ssl=ssl_value,
     )
     async with pool.acquire() as conn:
         await conn.execute("""
@@ -97,12 +99,12 @@ async def create_pending(connection_id: str, chat_id: int, sender_user_id: int |
 
 async def get_pending(pending_id: int):
     async with get_pool().acquire() as conn:
-        return await conn.fetchrow(
-            "SELECT * FROM pending_replies WHERE id=$1", pending_id
-        )
+        return await conn.fetchrow("SELECT * FROM pending_replies WHERE id=$1", pending_id)
 
 
 async def resolve_pending(pending_id: int, status: str) -> bool:
+    if status not in {"approved", "rejected"}:
+        raise ValueError("Noto'g'ri pending status")
     async with get_pool().acquire() as conn:
         result = await conn.execute(
             """UPDATE pending_replies SET status=$2, resolved_at=NOW()
