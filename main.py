@@ -173,6 +173,15 @@ async def business_text_handler(message: Message):
         logger.exception("Telegram Business xabarini qayta ishlashda xato")
     except Exception:
         logger.exception("Xabarni qayta ishlashda kutilmagan xato")
+        try:
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text="Xabaringizni oldim, lekin hozir javob tayyorlashda texnik muammo yuz berdi. Birozdan keyin yana yozib ko'ring.",
+                business_connection_id=connection_id,
+                parse_mode=None,
+            )
+        except TelegramAPIError:
+            logger.exception("Texnik xato haqida suhbatdoshga xabar yuborib bo'lmadi")
 
 
 @router.callback_query(F.data.startswith("approve:"))
