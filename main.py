@@ -167,22 +167,26 @@ async def business_text_handler(message: Message):
                 result["reply"],
             )
             admin_text = (
-                f"🔔 <b>Muhim xabar — tasdiq kerak</b>\n"
+                f"🔔 <b>Muhim xabar — tasdiq kerak</b>\\n"
                 f"<b>Kimdan:</b> {escape_html(sender_name)} "
-                f"(@{escape_html(sender_username) if sender_username else 'username yo‘q'})\n"
-                f"<b>Telegram ID:</b> {sender.id if sender else 'mavjud emas'}\n"
-                f"<b>Profil:</b> <a href=\"tg://user?id={sender.id}\">Telegram profilini ochish</a>\n" if sender else ""
-            )
-            admin_text += (
-                f"<b>Sabab:</b> {escape_html(result['reason'])}\n"
-                f"<b>Xabar:</b> {escape_html(text)}\n"
-                f"<b>AI taklifi:</b> {escape_html(result['reply'])}\n\n"
-                f"ID: #{pending_id}"
+                f"(@{escape_html(sender_username) if sender_username else 'username yo‘q'})\\n"
+                f"<b>Telegram ID:</b> {sender.id if sender else 'mavjud emas'}\\n"
+                + (f"<b>Profil:</b> <a href=\\"tg://user?id={sender.id}\\">Telegram profilini ochish</a>\\n" if sender else "")
+                + f"<b>Sabab:</b> {escape_html(result['reason'])}\\n"
+                + f"<b>Xabar:</b> {escape_html(text)}\\n"
+                + f"<b>AI taklifi:</b> {escape_html(result['reply'])}\\n\\n"
+                + f"ID: #{pending_id}"
             )
             try:
                 await bot.send_message(ADMIN_ID, admin_text, reply_markup=approval_keyboard(pending_id))
             except TelegramAPIError:
                 logger.exception("Admin'ga tasdiq xabarini yuborib bo'lmadi")
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text="Xabaringizni oldim va akkaunt egasiga yetkazdim. Bu masalani albatta aniqlashtirib beraman yoki imkon bo‘lishi bilan egasining o‘zi sizga javob beradi.",
+                business_connection_id=connection_id,
+                parse_mode=None,
+            )
             return
 
         await bot.send_message(
