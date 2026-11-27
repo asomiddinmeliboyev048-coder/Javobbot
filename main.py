@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+
+from aiohttp import web
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.enums import ParseMode
@@ -223,9 +226,27 @@ async def reject_reply(callback: CallbackQuery):
         await callback.answer("Bu javob allaqachon ko'rib chiqilgan.")
 
 
+async def health_check(request: web.Request) -> web.Response:
+    return web.json_response({"status": "ok", "service": "JavobBot"})
+
+
+async def start_health_server() -> web.AppRunner:
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))
+    site = web.TCPSite(runner, host="0.0.0.0", port=port)
+    await site.start()
+    logger.info("HTTP health server listening on 0.0.0.0:%s", port)
+    return runner
+
+
 async def main():
     await init_db()
-    logger.info("JavobBot ishga tushmoqda")
+    health_runner = await start_health_server()
+    logger.info("JavobBot polling orqali ishga tushmoqda")
     try:
         await dp.start_polling(
             bot,
@@ -233,6 +254,7 @@ async def main():
             close_bot_session=False,
         )
     finally:
+        await health_runner.cleanup()
         await close_db()
         await bot.session.close()
 
