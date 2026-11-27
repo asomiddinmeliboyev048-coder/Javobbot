@@ -68,11 +68,11 @@ def _local_fallback(history: list[dict], incoming_text: str) -> dict:
                    "manzil", "telefon raqam", "parol", "kod", "kasallik", "shifokor",
                    "срочно", "деньги", "адрес", "номер телефона")
     if any(term in normalized for term in owner_terms):
-        return {"reply": "Xabaringizni oldim. Bu masala bo‘yicha Asomiddin o‘zlari sizga javob beradilar. Xabaringizni ularga albatta yetkazib qo‘yaman.",
+        return {"reply": "Xabaringizni muhim deb hisobladim. Bu xabarni Asomiddinga albatta yetkazib qo‘yaman. Bu masala bo‘yicha Asomiddin o‘zlari sizga javob beradilar.",
                 "needs_approval": True, "reason": "Gemini kvotasi tugagan; egasining javobi talab qilinadi"}
 
     # Noma'lum savolga uydirma javob bermaslik.
-    return {"reply": "Xabaringizni tushundim. Sizga noto‘g‘ri ma’lumot bermaslik uchun bu savolni Asomiddinga yetkazaman. Imkon bo‘lishi bilan o‘zlari javob beradilar.",
+    return {"reply": "Xabaringizni muhim deb hisobladim. Uni Asomiddinga albatta yetkazib qo‘yaman. Imkon bo‘lishi bilan Asomiddin o‘zlari sizga javob beradilar.",
             "needs_approval": True, "reason": "Gemini kvotasi tugagan; savolni egasi ko‘rib chiqishi kerak"}
 
 
@@ -104,9 +104,18 @@ async def generate_reply(history: list[dict], incoming_text: str) -> dict:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, headers=headers, json=payload) as response:
                 body = await response.text()
-                if response.status == 429:
+                quota_error = (
+                    response.status == 429
+                    or "RESOURCE_EXHAUSTED" in body
+                    or "quota" in body.lower()
+                    or "rate limit" in body.lower()
+                )
+                if quota_error:
                     _gemini_quota_exhausted = True
-                    logger.warning("Gemini kvotasi/tezlik limiti tugadi (HTTP 429). Mahalliy javob rejimi yoqildi.")
+                    logger.warning(
+                        "Gemini bepul kvotasi yoki so'rov limiti tugadi (HTTP %s). "
+                        "Mahalliy javob rejimi yoqildi.", response.status
+                    )
                     return _local_fallback(history, incoming_text)
                 if response.status >= 400:
                     logger.error("Gemini API xatosi (%s): %s", response.status, body[:1500])
