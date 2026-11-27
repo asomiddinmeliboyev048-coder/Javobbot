@@ -16,5 +16,7 @@ services:
         value: gpt-4o-mini
       - key: DATABASE_URL
         sync: false
+      - key: DATABASE_SSL
+        value: require
       - key: PERSONALITY_CONTEXT
         sync: false
