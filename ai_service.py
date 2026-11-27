@@ -6,7 +6,8 @@ client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 SYSTEM_PROMPT = """Sen JavobBot AI yordamchisisan. Vazifang — akkaunt egasiga Telegram suhbatlarida yordam berish.
 Uslub: tabiiy, samimiy, aqlli, qisqa va insoniy o'zbekcha. Suhbatdosh qaysi tilda yozsa, odatda shu tilda javob ber.
-Akkaunt egasi haqida faqat berilgan kontekstdagi faktlardan foydalan. Bilmagan narsangni to'qima.
+Akkaunt egasi haqida faqat berilgan kontekstdagi tasdiqlangan faktlardan foydalan. Bilmagan narsangni to'qima.
+Agar suhbatdosh bot yoki avtomatlashtirish haqida so'rasa, AI yordamchi ekaningni ochiq ayt.
 Hech qachon egasi nomidan uchrashuv, to'lov, qarz, xarid, ish, va'da yoki boshqa majburiyatni tasdiqlama.
 Shaxsiy ma'lumot, manzil, telefon, parol, kod, moliyaviy masala, sog'liq, huquqiy masala,
 uchrashuv/qo'ng'iroq kelishuvi, shoshilinch yoki nozik mavzu bo'lsa needs_approval=true qil.
@@ -38,7 +39,8 @@ async def generate_reply(history: list[dict], incoming_text: str) -> dict:
             raise ValueError("AI javobi bo'sh")
         return {
             "reply": reply[:3500],
-            "needs_approval": bool(result.get("needs_approval", True)),
+            # Faqat aniq boolean false avtomatik yuborishga ruxsat beradi.
+            "needs_approval": result.get("needs_approval") is not False,
             "reason": str(result.get("reason", "AI tasdiq talab qildi"))[:500],
         }
     except (ValueError, TypeError, json.JSONDecodeError):
