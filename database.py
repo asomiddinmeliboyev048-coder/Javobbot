@@ -43,11 +43,20 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_chat_messages_memory
                 ON chat_messages(connection_id, chat_id, id DESC);
 
+            CREATE TABLE IF NOT EXISTS chat_disclosures (
+                connection_id TEXT NOT NULL,
+                chat_id BIGINT NOT NULL,
+                disclosed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY(connection_id, chat_id)
+            );
+
             CREATE TABLE IF NOT EXISTS pending_replies (
                 id BIGSERIAL PRIMARY KEY,
                 connection_id TEXT NOT NULL,
                 chat_id BIGINT NOT NULL,
                 sender_user_id BIGINT,
+                sender_name TEXT,
+                sender_username TEXT,
                 original_text TEXT NOT NULL,
                 suggested_reply TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending'
@@ -56,6 +65,9 @@ async def init_db() -> None:
                 resolved_at TIMESTAMPTZ
             );
         """)
+        # Old database installations are upgraded safely without deleting existing records.
+        await conn.execute("ALTER TABLE pending_replies ADD COLUMN IF NOT EXISTS sender_name TEXT")
+        await conn.execute("ALTER TABLE pending_replies ADD COLUMN IF NOT EXISTS sender_username TEXT")
 
 
 def get_pool() -> asyncpg.Pool:
@@ -87,13 +99,16 @@ async def get_history(connection_id: str, chat_id: int, limit: int = 12) -> list
 
 
 async def create_pending(connection_id: str, chat_id: int, sender_user_id: int | None,
+                         sender_name: str | None, sender_username: str | None,
                          original_text: str, suggested_reply: str) -> int:
     async with get_pool().acquire() as conn:
         return await conn.fetchval(
             """INSERT INTO pending_replies
-               (connection_id, chat_id, sender_user_id, original_text, suggested_reply)
-               VALUES($1, $2, $3, $4, $5) RETURNING id""",
-            connection_id, chat_id, sender_user_id, original_text[:12000], suggested_reply[:4000]
+               (connection_id, chat_id, sender_user_id, sender_name, sender_username,
+                original_text, suggested_reply)
+               VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING id""",
+            connection_id, chat_id, sender_user_id, sender_name, sender_username,
+            original_text[:12000], suggested_reply[:4000]
         )
 
 
@@ -147,3 +162,14 @@ async def close_db() -> None:
     if pool:
         await pool.close()
         pool = None
+
+
+async def mark_disclosure_once(connection_id: str, chat_id: int) -> bool:
+    """True only for the first incoming message in this Business chat."""
+    async with get_pool().acquire() as conn:
+        inserted = await conn.fetchval(
+            """INSERT INTO chat_disclosures(connection_id, chat_id)
+               VALUES($1, $2) ON CONFLICT DO NOTHING RETURNING TRUE""",
+            connection_id, chat_id
+        )
+    return bool(inserted)
