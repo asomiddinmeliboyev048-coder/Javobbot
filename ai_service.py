@@ -1,8 +1,11 @@
 import json
-from openai import AsyncOpenAI
-from config import OPENAI_API_KEY, OPENAI_MODEL, PERSONALITY_CONTEXT
+import logging
 
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+import aiohttp
+
+from config import GEMINI_API_KEY, GEMINI_MODEL, PERSONALITY_CONTEXT
+
+logger = logging.getLogger("javobbot.ai")
 
 SYSTEM_PROMPT = """Sen JavobBot AI yordamchisisan. Vazifang — akkaunt egasiga Telegram suhbatlarida yordam berish.
 Uslub: tabiiy, samimiy, aqlli, qisqa va insoniy o'zbekcha. Suhbatdosh qaysi tilda yozsa, odatda shu tilda javob ber.
@@ -20,18 +23,45 @@ reply — suhbatdoshga yuboriladigan qisqa javob. reason — admin uchun qisqa s
 
 
 async def generate_reply(history: list[dict], incoming_text: str) -> dict:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend(history)
-    messages.append({"role": "user", "content": incoming_text})
+    contents = []
+    for item in history:
+        role = "model" if item.get("role") == "assistant" else "user"
+        content = str(item.get("content", "")).strip()
+        if content:
+            contents.append({"role": role, "parts": [{"text": content}]})
+    contents.append({"role": "user", "parts": [{"text": incoming_text}]})
 
-    response = await client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=messages,
-        response_format={"type": "json_object"},
-        temperature=0.7,
-        max_tokens=350,
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent"
     )
-    raw = response.choices[0].message.content or "{}"
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 450,
+            "responseMimeType": "application/json",
+        },
+    }
+    timeout = aiohttp.ClientTimeout(total=45)
+    headers = {"x-goog-api-key": GEMINI_API_KEY}
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(url, headers=headers, json=payload) as response:
+            body = await response.text()
+            if response.status >= 400:
+                logger.error("Gemini API xatosi (%s): %s", response.status, body[:1500])
+                raise RuntimeError(f"Gemini API xatosi: HTTP {response.status}")
+            data = json.loads(body)
+
+    candidates = data.get("candidates") or []
+    parts = (candidates[0].get("content", {}).get("parts", []) if candidates else [])
+    raw = "".join(part.get("text", "") for part in parts).strip()
+    if not raw:
+        logger.error("Gemini bo'sh javob qaytardi: %s", json.dumps(data, ensure_ascii=False)[:1500])
+        raise ValueError("Gemini bo'sh javob qaytardi")
+
     try:
         result = json.loads(raw)
         reply = str(result.get("reply", "")).strip()
@@ -44,6 +74,7 @@ async def generate_reply(history: list[dict], incoming_text: str) -> dict:
             "reason": str(result.get("reason", "AI tasdiq talab qildi"))[:500],
         }
     except (ValueError, TypeError, json.JSONDecodeError):
+        logger.exception("Gemini javobini JSON sifatida o'qib bo'lmadi")
         return {
             "reply": "Xabaringizni oldim. Birozdan keyin javob beraman.",
             "needs_approval": True,
