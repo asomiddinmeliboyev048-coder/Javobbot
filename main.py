@@ -162,6 +162,7 @@ async def business_text_handler(message: Message):
             chat_id=message.chat.id,
             text=result["reply"],
             business_connection_id=connection_id,
+            parse_mode=None,
         )
         await save_message(connection_id, message.chat.id, "assistant", result["reply"])
 
@@ -194,6 +195,7 @@ async def approve_reply(callback: CallbackQuery):
             chat_id=pending["chat_id"],
             text=pending["suggested_reply"],
             business_connection_id=pending["connection_id"],
+            parse_mode=None,
         )
         await resolve_pending(pending_id, "approved")
         await save_message(
