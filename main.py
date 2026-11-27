@@ -183,7 +183,7 @@ async def business_text_handler(message: Message):
                 logger.exception("Admin'ga tasdiq xabarini yuborib bo'lmadi")
             await bot.send_message(
                 chat_id=message.chat.id,
-                text="Xabaringizni oldim va akkaunt egasiga yetkazdim. Bu masalani albatta aniqlashtirib beraman yoki imkon bo‘lishi bilan egasining o‘zi sizga javob beradi.",
+                text="Xabaringizni muhim deb hisobladim. Uni Asomiddinga albatta yetkazib qo‘yaman. Bu masala bo‘yicha Asomiddin o‘zlari sizga javob beradilar.",
                 business_connection_id=connection_id,
                 parse_mode=None,
             )
