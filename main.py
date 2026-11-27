@@ -120,7 +120,12 @@ async def business_text_handler(message: Message):
     connection_id = message.business_connection_id
     if not connection_id or not message.chat:
         return
+    if message.chat.type != "private":
+        return
+    # Business akkaunt egasining o'zi yuborgan xabarlarni bot qayta ishlamasin.
     if message.from_user and message.from_user.id == ADMIN_ID:
+        return
+    if getattr(message, "sender_business_bot", None):
         return
     if message.chat.type != "private":
         return
@@ -130,6 +135,10 @@ async def business_text_handler(message: Message):
 
     try:
         connection = await bot.get_business_connection(connection_id)
+        # ADMIN_ID noto'g'ri sozlangan bo'lsa ham, akkaunt egasining o'z xabariga javob bermaymiz.
+        if message.from_user and message.from_user.id == connection.user.id:
+            logger.info("Business egasining o'z xabari o'tkazib yuborildi: chat=%s", message.chat.id)
+            return
         rights = connection.rights
         can_reply = bool(getattr(rights, "can_reply", False)) if rights else bool(
             getattr(connection, "can_reply", False)
@@ -201,15 +210,40 @@ async def business_text_handler(message: Message):
         logger.exception("Telegram Business xabarini qayta ishlashda xato")
     except Exception:
         logger.exception("Xabarni qayta ishlashda kutilmagan xato")
+        # Ichki texnik xatoni suhbatdoshga ko'rsatmaymiz; xabarni egasiga yetkazish va'dasini beramiz.
         try:
+            sender = message.from_user
+            sender_name = (sender.full_name if sender else message.chat.full_name) or "Noma'lum"
+            sender_username = sender.username if sender else None
+            safe_reply = (
+                "Xabaringizni muhim deb hisobladim. Uni Asomiddinga albatta yetkazib qo‘yaman. "
+                "Bu masala bo‘yicha Asomiddin o‘zlari sizga javob beradilar."
+            )
+            pending_id = await create_pending(
+                connection_id, message.chat.id, sender.id if sender else None,
+                sender_name, sender_username, text, safe_reply
+            )
+            try:
+                await bot.send_message(
+                    ADMIN_ID,
+                    f"⚠️ <b>Javob tayyorlashda xatolik — qo‘lda ko‘rib chiqing</b>\n"
+                    f"<b>Kimdan:</b> {escape_html(sender_name)}\n"
+                    f"<b>Telegram ID:</b> {sender.id if sender else 'mavjud emas'}\n"
+                    f"<b>Xabar:</b> {escape_html(text)}\n"
+                    f"<b>Sabab:</b> Texnik xato. Render loglarini tekshiring.\n"
+                    f"<b>ID:</b> #{pending_id}",
+                    reply_markup=approval_keyboard(pending_id),
+                )
+            except TelegramAPIError:
+                logger.exception("Admin'ga texnik xato bo'yicha xabar yuborilmadi")
             await bot.send_message(
                 chat_id=message.chat.id,
-                text="Xabaringizni oldim, lekin hozir javob tayyorlashda texnik muammo yuz berdi. Birozdan keyin yana yozib ko'ring.",
+                text=safe_reply,
                 business_connection_id=connection_id,
                 parse_mode=None,
             )
-        except TelegramAPIError:
-            logger.exception("Texnik xato haqida suhbatdoshga xabar yuborib bo'lmadi")
+        except Exception:
+            logger.exception("Xatolikdan keyingi xavfsiz javobni yuborib bo'lmadi")
 
 
 @router.callback_query(F.data.startswith("approve:"))
