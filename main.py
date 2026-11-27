@@ -14,7 +14,7 @@ from aiogram.exceptions import TelegramAPIError
 from config import BOT_TOKEN, ADMIN_ID
 from database import (
     init_db, close_db, save_message, get_history, create_pending,
-    get_pending, resolve_pending, save_connection, get_stats,
+    get_pending, resolve_pending, save_connection, get_stats, mark_disclosure_once,
 )
 from ai_service import generate_reply
 
@@ -69,7 +69,8 @@ async def pending_handler(message: Message):
     from database import get_pool
     async with get_pool().acquire() as conn:
         rows = await conn.fetch(
-            """SELECT id, original_text, suggested_reply, created_at
+            """SELECT id, original_text, suggested_reply, sender_name, sender_username,
+                      sender_user_id, created_at
                FROM pending_replies WHERE status='pending'
                ORDER BY id DESC LIMIT 10"""
         )
@@ -79,6 +80,9 @@ async def pending_handler(message: Message):
     for row in rows:
         await message.answer(
             f"📝 <b>Tasdiq kutilmoqda #{row['id']}</b>\n"
+            f"<b>Kimdan:</b> {escape_html(row['sender_name'] or 'Noma’lum')} "
+            f"(@{escape_html(row['sender_username']) if row['sender_username'] else 'username yo‘q'})\n"
+            f"<b>Telegram ID:</b> {row['sender_user_id'] or 'mavjud emas'}\n"
             f"<b>Kelgan xabar:</b> {escape_html(row['original_text'])}\n"
             f"<b>Taklif:</b> {escape_html(row['suggested_reply'])}",
             reply_markup=approval_keyboard(row["id"]),
@@ -134,7 +138,19 @@ async def business_text_handler(message: Message):
             logger.warning("Business connection has no reply permission")
             return
 
+        # Incoming message is archived before AI processing; later deletion in Telegram
+        # does not erase this server-side record.
         await save_message(connection_id, message.chat.id, "user", text)
+        sender = message.from_user
+        sender_name = (sender.full_name if sender else message.chat.full_name) or "Noma’lum"
+        sender_username = sender.username if sender else None
+        if await mark_disclosure_once(connection_id, message.chat.id):
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text="Salom! Men akkaunt egasining yordamchisiman. Xabaringizga imkon qadar tez javob beraman; egasining shaxsiy qarori yoki tasdig‘i kerak bo‘lsa, albatta yetkazaman.",
+                business_connection_id=connection_id,
+                parse_mode=None,
+            )
         history = await get_history(connection_id, message.chat.id)
         # Joriy xabar history ichida bor; generate_reply uni takrorlamasligi uchun chiqaramiz.
         history = history[:-1]
@@ -144,12 +160,20 @@ async def business_text_handler(message: Message):
             pending_id = await create_pending(
                 connection_id,
                 message.chat.id,
-                message.from_user.id if message.from_user else None,
+                sender.id if sender else None,
+                sender_name,
+                sender_username,
                 text,
                 result["reply"],
             )
             admin_text = (
                 f"🔔 <b>Muhim xabar — tasdiq kerak</b>\n"
+                f"<b>Kimdan:</b> {escape_html(sender_name)} "
+                f"(@{escape_html(sender_username) if sender_username else 'username yo‘q'})\n"
+                f"<b>Telegram ID:</b> {sender.id if sender else 'mavjud emas'}\n"
+                f"<b>Profil:</b> <a href=\"tg://user?id={sender.id}\">Telegram profilini ochish</a>\n" if sender else ""
+            )
+            admin_text += (
                 f"<b>Sabab:</b> {escape_html(result['reason'])}\n"
                 f"<b>Xabar:</b> {escape_html(text)}\n"
                 f"<b>AI taklifi:</b> {escape_html(result['reply'])}\n\n"
