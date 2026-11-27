@@ -17,7 +17,7 @@ Telegram Business uchun shaxsiy AI yordamchi. U oddiy, xavfsiz savollarga tabiiy
 - aiogram 3
 - OpenAI API
 - Supabase PostgreSQL (Session pooler) + asyncpg
-- Render Background Worker
+- Render Web Service (HTTP health endpoint + Telegram long polling)
 
 ## 1. Kerakli ma'lumotlar
 
@@ -62,10 +62,10 @@ Avval botning o'ziga shaxsiy chatdan `/start` yuboring. Shunda u muhim xabarlarn
 
 ## 3. Render'ga joylash
 
-1. Render'da **New → Background Worker** tanlang.
+1. Render'da **New → Web Service** tanlang.
 2. GitHub'dan `asomiddinmeliboyev048-coder/Javobbot` repozitoriyasini ulang.
 3. Build command: `pip install -r requirements.txt`.
-4. Start command: `python main.py`.
+4. Start command: `python main.py`. Ilova Render bergan `PORT` qiymatida `0.0.0.0` ga HTTP server ochadi; `/health` endpointi health check uchun ishlaydi, Telegram update'lari esa polling orqali olinadi.
 5. Environment bo'limiga `BOT_TOKEN`, `ADMIN_ID`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `DATABASE_URL`, `DATABASE_SSL` va `PERSONALITY_CONTEXT` qiymatlarini kiriting.
 6. Supabase Dashboard → Connect → **Session pooler** bo'limidan connection string oling. Render'dagi doimiy worker uchun IPv4 tarmog'ida bu mos tanlov; URL'dagi host, username va portni aynan Supabase berganidek saqlang (odatda port 5432).
 
